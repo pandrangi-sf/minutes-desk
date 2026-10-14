@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Minutes Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+  /* ── Fill these in once (Supabase dashboard → Project Settings → API).
+        Leave blank to be asked on first open instead. The anon / publishable key is safe in a browser:
+        Row Level Security keeps every meeting private to its owner. ── */
+  window.MINUTES_CONFIG = {
+    SUPABASE_URL: "https://vjrynvptyqckhilxqigt.supabase.co",
+    SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqcnludnB0eXFja2hpbHhxaWd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MzI5MjAsImV4cCI6MjEwNzUwODkyMH0.1EqvPyjCbhOb2kukOAGFLW8ptijZjdl4Ieb48JC-W_4"
+  };
+</script>
+<style>
+/* Layout: a two-pane desk — live capture on the left, the minutes being drafted on the right; stacks on phones. */
+:root{
+  --bg:#ECEFF3; --paper:#FFFFFF; --ink:#18212B; --muted:#5A6673; --rule:#D2D8E0;
+  --accent:#2446C8; --accent-ink:#FFFFFF; --soft:#E4E9F7; --rec:#D23A2E; --done:#2E7D57;
+  --display:"IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#10151B; --paper:#18202A; --ink:#E5E9EF; --muted:#94A1AF; --rule:#2B3644;
+  --accent:#8199FF; --accent-ink:#0C1120; --soft:#1D2842; --rec:#FF6B5E; --done:#5CC18E; color-scheme:dark}}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg);color:var(--ink);margin:0}
+body{font-family:var(--body);font-size:16px;line-height:1.55;padding-inline:clamp(16px,3vw,36px);padding-block:calc(20px + env(safe-area-inset-top,0px)) calc(48px + env(safe-area-inset-bottom,0px))}
+.wrap{max-width:1280px;margin-inline:auto;display:flex;flex-direction:column;gap:20px}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;justify-content:space-between}
+.brand{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.brand i{width:10px;height:10px;border-radius:50%;background:var(--ink);display:inline-block}
+.brand.live i{background:var(--rec);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.lib{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.lib select{min-width:0;max-width:300px}
+.sync{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.sync.err{color:var(--rec)}
+.who{font-family:var(--display);font-size:13px;color:var(--muted)}
+select,input[type=text],input[type=date],input[type=email],input[type=password],input[type=url]{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:7px 10px;font-family:var(--display);font-size:14px}
+
+.btn{font-family:var(--display);font-weight:600;font-size:14px;letter-spacing:.02em;border:1px solid var(--rule);background:var(--paper);border-radius:6px;padding:7px 14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.rec{background:var(--rec);color:#fff;border-color:var(--rec)}
+.btn.danger{color:var(--rec)}
+.btn.link{border:none;background:none;padding:4px 6px;color:var(--accent)}
+.btn .dot{width:9px;height:9px;border-radius:50%;background:currentColor}
+.btn .sq{width:9px;height:9px;background:currentColor}
+
+/* gate: setup + sign in */
+.gate{max-width:440px;margin:8vh auto 0;background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:28px 26px;display:flex;flex-direction:column;gap:14px}
+.gate h1{font-family:var(--display);font-size:28px;margin:0;line-height:1.1}
+.gate p{margin:0;color:var(--muted);font-size:15px}
+.gate label{font-family:var(--display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.gate input{width:100%;font-size:15px;padding:9px 11px;text-transform:none;letter-spacing:0;color:var(--ink)}
+.gate .row{display:flex;gap:8px;flex-wrap:wrap}
+.gate .row .btn{flex:1 1 140px}
+.msg{font-family:var(--display);font-size:14px;margin:0}
+.msg.err{color:var(--rec)}
+.msg.ok{color:var(--done)}
+
+.meta{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;border-bottom:2px solid var(--ink);padding-bottom:14px}
+.meta .tt{flex:1 1 360px;min-width:0}
+.meta label{display:block;font-family:var(--display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+#title{width:100%;border:none;background:transparent;padding:0;font-family:var(--display);font-weight:700;font-size:clamp(24px,3.4vw,36px);line-height:1.15}
+#title:focus{outline:none;box-shadow:0 2px 0 var(--accent)}
+.badge{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:var(--soft);color:var(--accent);padding:2px 8px;border-radius:4px;vertical-align:middle}
+
+.desk{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+@media (max-width:920px){.desk{grid-template-columns:minmax(0,1fr)}}
+.pane{background:var(--paper);border:1px solid var(--rule);border-radius:10px;min-width:0;display:flex;flex-direction:column}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:12px 14px;border-bottom:1px solid var(--rule)}
+.bar h2{font-family:var(--display);font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin:0 auto 0 0;color:var(--muted);font-weight:600}
+.clock{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.clock.on{color:var(--rec)}
+#transcript{width:100%;min-height:420px;resize:vertical;border:none;background:transparent;padding:14px 16px;font-family:var(--mono);font-size:13px;line-height:1.7;white-space:pre-wrap}
+#transcript:focus{outline:none}
+#interim{font-family:var(--mono);font-size:13px;color:var(--muted);font-style:italic;padding:0 16px 12px;min-height:1.7em}
+.foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--rule);font-family:var(--display);font-size:13px;color:var(--muted)}
+.foot .grow{margin-right:auto}
+.notice{margin:12px 14px 0;padding:10px 12px;border-radius:6px;background:var(--soft);font-family:var(--display);font-size:14px;line-height:1.45;border-left:3px solid var(--rec)}
+
+.notes{padding:18px 22px 26px;display:flex;flex-direction:column;gap:24px}
+.notes h3{font-family:var(--display);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600;display:flex;gap:8px;align-items:baseline}
+.notes h3 .n{font-family:var(--mono);font-size:12px;letter-spacing:0;color:var(--accent)}
+.summary{font-size:18px;line-height:1.55;max-width:68ch;margin:0}
+.topics{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.topic{border-top:2px solid var(--ink);padding-top:8px;min-width:0}
+.topic h4{font-family:var(--display);font-size:17px;font-weight:600;margin:0 0 4px;text-wrap:balance}
+.topic ul,.plain{margin:0;padding-left:18px}
+.topic li,.plain li{margin:2px 0}
+.reg{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th{font-family:var(--display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:left;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--ink)}
+td{padding:9px 8px;border-bottom:1px solid var(--rule);vertical-align:top}
+td.owner{font-family:var(--display);font-weight:600;white-space:nowrap}
+td.due{font-family:var(--mono);font-size:13px;color:var(--muted);white-space:nowrap}
+td.ck{width:34px}
+td.ck input{width:17px;height:17px;accent-color:var(--done);cursor:pointer}
+tr.done td.task{text-decoration:line-through;color:var(--muted)}
+.empty{padding:40px 22px;color:var(--muted);font-family:var(--display);font-size:15px;max-width:52ch}
+.empty strong{color:var(--ink);display:block;font-size:18px;margin-bottom:6px}
+.err{color:var(--rec);font-family:var(--display);font-size:14px}
+.thinking{font-family:var(--mono);font-size:13px;color:var(--muted);padding:40px 22px}
+.details dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 16px;margin:0;font-size:15px}
+.details dt{font-family:var(--display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+.details dd{margin:0;min-width:0}
+.ed{border-radius:4px;outline:none;cursor:text;transition:background .15s}
+.ed:hover{background:var(--soft)}
+.ed:focus{background:var(--soft);box-shadow:0 0 0 2px var(--accent)}
+.ed:empty::before{content:attr(data-ph);color:var(--muted);font-style:italic}
+.btn.add{font-size:13px;padding:4px 0;margin-top:4px}
+.hint{font-family:var(--display);font-size:13px;color:var(--muted);margin:0}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (prefers-reduced-motion:reduce){.brand.live i{animation:none}}
+</style>
+</head>
+<body>
+
+<!-- 1 · connect to Supabase (only when config above is blank) -->
+<form class="gate" id="setup" hidden>
+  <h1>Connect Minutes Desk</h1>
+  <p>Paste your Supabase project URL and anon (publishable) key. You'll find both under Project Settings → API.</p>
+  <label>Project URL<input id="cfgUrl" type="url" placeholder="https://abcdefgh.supabase.co" required></label>
+  <label>Anon / publishable key<input id="cfgKey" type="text" placeholder="eyJhbGciOi… or sb_publishable_…" required autocomplete="off"></label>
+  <button class="btn primary" type="submit">Connect</button>
+</form>
+
+<!-- 2 · connecting (no login: each browser gets its own private anonymous session) -->
+<div class="gate" id="auth" hidden>
+  <h1>Minutes Desk</h1>
+  <p class="msg" id="authMsg" aria-live="polite">Opening your desk…</p>
+  <div class="row"><button class="btn" id="retryBtn" type="button" hidden>Try again</button></div>
+  <button class="btn link" id="resetCfg" type="button">Use a different Supabase project</button>
+</div>
+
+<!-- 3 · the desk -->
+<div class="wrap" id="app" hidden>
+  <header class="top">
+    <div class="brand" id="brand"><i></i>Minutes Desk</div>
+    <div class="lib">
+      <span class="sync" id="sync" aria-live="polite"></span>
+      <label class="vh" for="pick">Saved meetings</label>
+      <select id="pick"></select>
+      <button class="btn" id="newBtn" type="button">New meeting</button>
+      <button class="btn danger" id="delBtn" type="button">Delete</button>
+    </div>
+  </header>
+
+  <section class="meta">
+    <div class="tt">
+      <label for="title">Meeting <span id="exBadge" class="badge" hidden>Example — edit to keep it</span></label>
+      <input id="title" type="text" placeholder="Untitled meeting" autocomplete="off">
+    </div>
+    <div><label for="date">Date</label><input id="date" type="date"></div>
+    <div><label for="lang">Spoken language</label>
+      <select id="lang">
+        <option value="en-US">English (US)</option>
+        <option value="en-IN">English (India)</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="es-MX">Español (México)</option>
+        <option value="es-ES">Español (España)</option>
+        <option value="hi-IN">हिन्दी</option>
+        <option value="te-IN">తెలుగు</option>
+      </select>
+    </div>
+  </section>
+
+  <main class="desk">
+    <section class="pane" aria-label="Transcript">
+      <div class="bar">
+        <h2>Transcript</h2>
+        <span class="clock" id="clock">00:00:00</span>
+        <button class="btn primary" id="listenBtn" type="button"><span class="dot"></span>Listen</button>
+      </div>
+      <div id="notice" class="notice" hidden></div>
+      <label class="vh" for="transcript">Transcript text</label>
+      <textarea id="transcript" spellcheck="false" placeholder="Press Listen and the conversation appears here, line by line with timestamps. You can also paste a transcript from Teams, Zoom or Meet, or upload a .vtt / .txt file."></textarea>
+      <div id="interim" aria-live="polite"></div>
+      <div class="foot">
+        <span class="grow" id="wc">0 words</span>
+        <input type="file" id="file" accept=".txt,.vtt,.srt,.md,text/plain,text/vtt" hidden>
+        <button class="btn" id="uploadBtn" type="button">Upload transcript</button>
+        <button class="btn" id="clearBtn" type="button">Clear</button>
+      </div>
+    </section>
+
+    <section class="pane" aria-label="Notes">
+      <div class="bar">
+        <h2>Minutes</h2>
+        <button class="btn" id="copyBtn" type="button">Copy Markdown</button>
+        <button class="btn" id="exportBtn" type="button">Export .md</button>
+        <button class="btn primary" id="genBtn" type="button">Create minutes</button>
+      </div>
+      <div id="notes"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const local = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k){ try { localStorage.removeItem(k); } catch {} }
+};
+const today = () => new Date().toISOString().slice(0,10);
+const show = id => ['setup','auth','app'].forEach(x => $('#' + x).hidden = x !== id);
+
+/* ───────── Supabase connection ───────── */
+const cfg = window.MINUTES_CONFIG || {};
+let URL_ = cfg.SUPABASE_URL || local.get('md.cfg', {}).url || '';
+let KEY_ = cfg.SUPABASE_ANON_KEY || local.get('md.cfg', {}).key || '';
+let sb = null, user = null;
+
+$('#setup').addEventListener('submit', e => {
+  e.preventDefault();
+  URL_ = $('#cfgUrl').value.trim().replace(/\/+$/, ''); KEY_ = $('#cfgKey').value.trim();
+  local.set('md.cfg', { url: URL_, key: KEY_ }); boot();
+});
+$('#resetCfg').hidden = !!cfg.SUPABASE_URL;
+$('#resetCfg').addEventListener('click', () => { local.del('md.cfg'); URL_ = KEY_ = ''; sb = null; show('setup'); });
+
+function boot(){
+  if (!URL_ || !KEY_){ show('setup'); return; }
+  if (!window.supabase){ show('auth'); authMsg('The Supabase library failed to load. Check your connection and reload.', 'err'); return; }
+  try { sb = window.supabase.createClient(URL_, KEY_); }
+  catch { show('setup'); return; }
+  sb.auth.onAuthStateChange((event, session) => {
+    const u = session?.user || null;
+    // defer: awaiting Supabase calls inside this callback can deadlock the auth client
+    if (u && (!user || u.id !== user.id)){ user = u; setTimeout(openDesk, 0); }
+    else if (!u && user){ user = null; connect(); }
+  });
+  connect();
+}
+
+/* ───────── no login: a private anonymous session per browser ───────── */
+function authMsg(t, kind){ const m = $('#authMsg'); m.textContent = t || ''; m.className = 'msg ' + (kind || ''); }
+async function connect(){
+  show('auth'); authMsg('Opening your desk…'); $('#retryBtn').hidden = true;
+  const { data } = await sb.auth.getSession();
+  if (data.session) return;                     // onAuthStateChange opens the desk
+  const { error } = await sb.auth.signInAnonymously();
+  if (error){
+    authMsg(/anonymous/i.test(error.message)
+      ? 'This app needs anonymous sign-ins turned on in Supabase (Authentication → Sign In / Providers → Allow anonymous sign-ins).'
+      : 'Couldn\'t connect: ' + error.message, 'err');
+    $('#retryBtn').hidden = false;
+  }
+}
+$('#retryBtn').addEventListener('click', connect);
+
+/* ───────── meetings ───────── */
+const EXAMPLE = {
+  id:'example', example:true, title:'Referral dashboard check-in', date:'2026-10-13', lang:'en-US', elapsed:1094,
+  transcript:
+`[00:00:04] Maya: Okay, let's start. Three things today — the referral dashboard refresh, the data gaps from the east clinics, and the training session.
+[00:00:19] Jordan: Dashboard first. The nightly refresh failed twice last week. It's the extract timing out, not the dashboard itself.
+[00:00:33] Maya: Can we move the extract earlier?
+[00:00:38] Jordan: Yes, I'll move it to 2 a.m. and add an alert if it runs past an hour. I can have that done by Thursday.
+[00:01:02] Priya: Related — the east clinics are still missing visit types for about 12 percent of rows.
+[00:01:15] Maya: Is that a source problem or a mapping problem?
+[00:01:21] Priya: Mapping. Two new clinic codes were added in September and nobody updated the lookup table.
+[00:01:34] Maya: Then let's agree the lookup table gets reviewed every month as part of the upload checklist.
+[00:01:42] Jordan: Agreed. Priya, can you send me the two codes?
+[00:01:46] Priya: I'll send them today and backfill September once they're mapped.
+[00:02:30] Maya: Last item, training. We said end of October. Is that still realistic?
+[00:02:38] Priya: If the dashboard is stable, yes. I'd like a dry run the week before.
+[00:02:45] Maya: Let's do the dry run on the 22nd. I'll book the room and send invites.
+[00:03:01] Jordan: One open question — do the physician liaisons get edit access or view only?
+[00:03:08] Maya: I don't know yet. I'll check with leadership and come back next week.`,
+  notes:{
+    attendees:['Maya','Jordan','Priya'],
+    summary:'The team traced last week\'s failed dashboard refreshes to a timing-out data extract and agreed to move it earlier with an alert. Missing visit types at the east clinics come from two unmapped clinic codes, and the lookup table will now be reviewed monthly. Training stays on track for end of October with a dry run on the 22nd.',
+    topics:[
+      {title:'Dashboard refresh failures', points:['Nightly refresh failed twice last week','Cause is the extract timing out, not the dashboard','Extract moves to 2 a.m. with a one-hour runtime alert']},
+      {title:'East clinic data gaps', points:['About 12% of rows missing visit type','Two clinic codes added in September were never mapped','September data to be backfilled after mapping']},
+      {title:'Training session', points:['End of October target holds if the dashboard is stable','Dry run scheduled the week before']}
+    ],
+    decisions:['Move the nightly extract to 2 a.m. and alert on runs over one hour','Review the lookup table monthly as part of the upload checklist','Hold the training dry run on October 22'],
+    actions:[
+      {task:'Move extract to 2 a.m. and add runtime alert', owner:'Jordan', due:'Thursday', done:false},
+      {task:'Send the two new clinic codes to Jordan', owner:'Priya', due:'Today', done:true},
+      {task:'Backfill September visit types once codes are mapped', owner:'Priya', due:'', done:false},
+      {task:'Book room and send invites for the Oct 22 dry run', owner:'Maya', due:'', done:false},
+      {task:'Confirm liaison access level with leadership', owner:'Maya', due:'Next week', done:false}
+    ],
+    questions:['Should physician liaisons get edit access or view-only access?']
+  }
+};
+function exampleMeeting(){
+  const m = structuredClone(EXAMPLE);
+  const summary = m.notes.summary; m.notes = buildMinutes(m); m.notes.summary = summary;
+  return m;
+}
+const fromRow = r => ({ id:r.id, title:r.title || '', date:r.meeting_date || '', lang:r.lang || 'en-US', transcript:r.transcript || '', notes:r.notes || null, elapsed:r.elapsed_seconds || 0 });
+const toRow = m => ({ id:m.id, title:m.title || '', meeting_date:m.date || null, lang:m.lang || 'en-US', transcript:m.transcript || '', notes:m.notes || null, elapsed_seconds:Math.round(m.elapsed || 0) });
+
+let meetings = [], currentId = null;
+const cur = () => meetings.find(m => m.id === currentId) || meetings[0];
+const pendingKey = () => 'md.pending.' + (user?.id || '');
+
+async function openDesk(){
+  show('app');
+  setSync('Loading…');
+  // push anything that failed to save last time
+  const pending = local.get(pendingKey(), []);
+  if (pending.length){
+    const { error } = await sb.from('meetings').upsert(pending);
+    if (!error) local.del(pendingKey());
+  }
+  const { data, error } = await sb.from('meetings').select('*')
+    .order('meeting_date', { ascending:false, nullsFirst:false }).order('created_at', { ascending:false });
+  if (error){
+    setSync(/relation|does not exist|schema cache/i.test(error.message) ? 'Table "meetings" not found — run the SQL setup' : 'Couldn\'t load meetings: ' + error.message, true);
+    meetings = [exampleMeeting()];
+  } else {
+    meetings = data.map(fromRow);
+    if (!meetings.length) meetings = [exampleMeeting()];
+    setSync('Saved');
+  }
+  const last = local.get('md.current', null);
+  currentId = meetings.some(m => m.id === last) ? last : meetings[0].id;
+  renderMeeting();
+}
+
+/* ───────── saving ───────── */
+const dirty = new Set();
+let saveT = null, retryT = null, flushing = null;
+function setSync(text, isErr){ const s = $('#sync'); s.textContent = text || ''; s.classList.toggle('err', !!isErr); }
+function save(){
+  const m = cur();
+  if (m.example){ m.example = false; m.id = crypto.randomUUID(); currentId = m.id; $('#exBadge').hidden = true; renderPicker(); }
+  local.set('md.current', currentId);
+  dirty.add(m.id); setSync('Saving…');
+  clearTimeout(saveT); saveT = setTimeout(flush, 800);
+}
+function flush(){
+  clearTimeout(saveT); clearTimeout(retryT);
+  if (flushing) return flushing.then(() => dirty.size ? flush() : undefined);
+  const ids = [...dirty]; dirty.clear();
+  const rows = ids.map(id => meetings.find(m => m.id === id)).filter(Boolean).map(toRow);
+  if (!rows.length || !sb) return Promise.resolve();
+  flushing = sb.from('meetings').upsert(rows).then(({ error }) => {
+    flushing = null;
+    if (error){
+      ids.forEach(i => dirty.add(i));
+      local.set(pendingKey(), rows);
+      setSync('Not saved — retrying (' + error.message + ')', true);
+      retryT = setTimeout(flush, 15000);
+    } else {
+      local.del(pendingKey());
+      setSync(dirty.size ? 'Saving…' : 'Saved');
+      if (dirty.size){ saveT = setTimeout(flush, 800); }
+    }
+  });
+  return flushing;
+}
+window.addEventListener('beforeunload', () => {
+  if (listening) stopListening();
+  if (dirty.size){ local.set(pendingKey(), [...dirty].map(id => meetings.find(m => m.id === id)).filter(Boolean).map(toRow)); flush(); }
+});
+window.addEventListener('online', () => { if (dirty.size) flush(); });
+
+/* ───────── rendering ───────── */
+function renderPicker(){
+  const p = $('#pick'); p.textContent = '';
+  [...meetings].sort((a,b) => (b.date || '').localeCompare(a.date || '')).forEach(m => {
+    const o = document.createElement('option'); o.value = m.id;
+    o.textContent = (m.date ? m.date + ' · ' : '') + (m.title || 'Untitled meeting') + (m.example ? ' (example)' : '');
+    p.append(o);
+  });
+  p.value = currentId;
+}
+function renderMeeting(){
+  const m = cur(); currentId = m.id;
+  $('#title').value = m.title || ''; $('#date').value = m.date || ''; $('#lang').value = m.lang || 'en-US';
+  $('#transcript').value = m.transcript || ''; $('#exBadge').hidden = !m.example;
+  elapsed = m.elapsed || 0; showClock(); setBtn(); wordCount(); renderNotes(); renderPicker();
+}
+function wordCount(){
+  const n = ($('#transcript').value.match(/\S+/g) || []).length;
+  $('#wc').textContent = n.toLocaleString() + (n === 1 ? ' word' : ' words');
+}
+function el(tag, cls, text){ const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function head(label, count){ const h = el('h3'); h.append(label); if (count != null) h.append(el('span','n', String(count))); return h; }
+function renderNotes(){
+  const box = $('#notes'); box.textContent = '';
+  const m = cur(); const n = m.notes;
+  if (!n){
+    const e = el('div','empty');
+    e.append(el('strong', null, 'No minutes yet'));
+    e.append('When the meeting ends, press Create minutes. The transcript is turned into formal minutes: attendees, discussion points, decisions, action items with owners and due dates, and open items. Everything stays editable.');
+    box.append(e); return;
+  }
+  n.topics ||= []; n.decisions ||= []; n.actions ||= []; n.questions ||= []; n.attendees ||= [];
+  const wrap = el('div','notes');
+
+  // editable text helpers: every line of the minutes can be corrected by clicking it
+  const editable = (node, get, set, onEmpty) => {
+    node.contentEditable = 'true'; node.spellcheck = true; node.classList.add('ed'); node.textContent = get();
+    node.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); node.blur(); } });
+    node.addEventListener('blur', () => {
+      const v = node.textContent.trim();
+      if (v === get()) return;
+      if (!v && onEmpty){ onEmpty(); save(); renderNotes(); return; }
+      set(v); save();
+    });
+    return node;
+  };
+  const addBtn = (label, fn) => { const b = el('button','btn link add', '+ ' + label); b.type = 'button'; b.onclick = () => { fn(); save(); renderNotes(); const eds = box.querySelectorAll('[data-new]'); eds[eds.length - 1]?.focus(); }; return b; };
+  const listSection = (title, list, placeholder) => {
+    const s = el('section'); s.append(head(title, list.length || null));
+    const ul = el('ul','plain');
+    list.forEach((txt, i) => ul.append(editable(el('li'), () => list[i], v => list[i] = v, () => list.splice(i, 1))));
+    s.append(ul, addBtn(placeholder, () => list.push('New item')));
+    return s;
+  };
+
+  // 1. meeting details
+  const det = el('section','details');
+  const dl = el('dl');
+  const row = (k, v) => { dl.append(el('dt', null, k)); const dd = el('dd'); if (v instanceof Node) dd.append(v); else dd.textContent = v; dl.append(dd); };
+  row('Meeting', m.title || 'Untitled meeting');
+  row('Date', m.date || '—');
+  if (m.elapsed) row('Duration', fmt(m.elapsed));
+  row('Attendees', editable(el('span'), () => n.attendees.join(', '), v => n.attendees = v.split(',').map(x => x.trim()).filter(Boolean)));
+  det.append(dl); wrap.append(det);
+
+  // 2. note-taker's notes
+  const ns = el('section'); ns.append(head('Notes'));
+  ns.append(editable(el('p','summary'), () => n.summary || '', v => n.summary = v));
+  if (!n.summary) ns.querySelector('p').dataset.ph = 'Click to add a short overview of the meeting.';
+  wrap.append(ns);
+
+  // 3. discussion
+  const ds = el('section'); ds.append(head('Discussion', n.topics.length || null));
+  const g = el('div','topics');
+  n.topics.forEach((t, ti) => {
+    const d = el('div','topic');
+    d.append(editable(el('h4'), () => t.title, v => t.title = v, () => n.topics.splice(ti, 1)));
+    const ul = el('ul'); t.points.forEach((p, pi) => ul.append(editable(el('li'), () => t.points[pi], v => t.points[pi] = v, () => t.points.splice(pi, 1))));
+    d.append(ul, addBtn('Point', () => t.points.push('New point'))); g.append(d);
+  });
+  ds.append(g, addBtn('Topic', () => n.topics.push({ title:'New topic', points:[] }))); wrap.append(ds);
+
+  // 4. action items
+  const as = el('section'); const open = n.actions.filter(a => !a.done).length;
+  as.append(head('Action items', n.actions.length ? open + ' open of ' + n.actions.length : null));
+  const r = el('div','reg'); const tb = el('table');
+  tb.innerHTML = '<thead><tr><th><span class="vh">Done</span></th><th>Action</th><th>Owner</th><th>Due</th></tr></thead>';
+  const body = el('tbody');
+  n.actions.forEach((a, i) => {
+    const tr = el('tr', a.done ? 'done' : '');
+    const ck = el('td','ck'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!a.done; cb.id = 'act-' + i;
+    cb.setAttribute('aria-label', 'Mark done: ' + a.task);
+    cb.onchange = () => { a.done = cb.checked; save(); renderNotes(); };
+    ck.append(cb);
+    tr.append(ck,
+      editable(el('td','task'), () => a.task, v => a.task = v, () => n.actions.splice(i, 1)),
+      editable(el('td','owner'), () => a.owner || '', v => a.owner = v),
+      editable(el('td','due'), () => a.due || '', v => a.due = v));
+    body.append(tr);
+  });
+  tb.append(body); r.append(tb); as.append(r, addBtn('Action item', () => n.actions.push({ task:'New action', owner:'', due:'', done:false })));
+  wrap.append(as);
+
+  // 5. decisions, open items
+  wrap.append(listSection('Decisions', n.decisions, 'Decision'));
+  wrap.append(listSection('Open items', n.questions, 'Open item'));
+  wrap.append(el('p','hint', 'Click any line to edit it. Clear a line to remove it.'));
+  box.append(wrap);
+}
+
+/* ───────── editing ───────── */
+$('#title').addEventListener('input', e => { cur().title = e.target.value; save(); renderPicker(); });
+$('#date').addEventListener('change', e => { cur().date = e.target.value; save(); renderPicker(); });
+$('#lang').addEventListener('change', e => { cur().lang = e.target.value; save(); if (listening){ stopListening(); startListening(); } });
+$('#transcript').addEventListener('input', e => { cur().transcript = e.target.value; save(); wordCount(); });
+$('#pick').addEventListener('change', e => { if (listening) stopListening(); currentId = e.target.value; local.set('md.current', currentId); renderMeeting(); });
+$('#newBtn').addEventListener('click', () => {
+  if (listening) stopListening();
+  meetings = meetings.filter(m => !m.example);
+  const m = { id: crypto.randomUUID(), title:'', date: today(), lang: cur()?.lang || 'en-US', transcript:'', notes:null, elapsed:0 };
+  meetings.push(m); currentId = m.id; save(); renderMeeting(); $('#title').focus();
+});
+let delArm;
+$('#delBtn').addEventListener('click', async e => {
+  const b = e.currentTarget;
+  if (!delArm){ b.textContent = 'Confirm delete'; delArm = setTimeout(() => { b.textContent = 'Delete'; delArm = null; }, 3000); return; }
+  clearTimeout(delArm); delArm = null; b.textContent = 'Delete';
+  if (listening) stopListening();
+  const m = cur();
+  if (!m.example){
+    dirty.delete(m.id);
+    const { error } = await sb.from('meetings').delete().eq('id', m.id);
+    if (error){ setSync('Couldn\'t delete: ' + error.message, true); return; }
+  }
+  meetings = meetings.filter(x => x.id !== m.id);
+  if (!meetings.length) meetings.push({ id: crypto.randomUUID(), title:'', date: today(), lang:'en-US', transcript:'', notes:null, elapsed:0 });
+  currentId = meetings[0].id; setSync('Deleted'); renderMeeting();
+});
+let clearArm;
+$('#clearBtn').addEventListener('click', e => {
+  const b = e.currentTarget;
+  if (!clearArm){ b.textContent = 'Confirm clear'; clearArm = setTimeout(() => { b.textContent = 'Clear'; clearArm = null; }, 3000); return; }
+  clearTimeout(clearArm); clearArm = null; b.textContent = 'Clear';
+  if (listening) stopListening();
+  const m = cur(); m.transcript = ''; m.elapsed = 0; elapsed = 0; save(); renderMeeting();
+});
+
+/* ───────── upload ───────── */
+$('#uploadBtn').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const raw = await f.text(); e.target.value = '';
+  const text = /\.(vtt|srt)$/i.test(f.name) || /^WEBVTT/.test(raw) ? cleanCaptions(raw) : raw.trim();
+  const m = cur(); m.transcript = (m.transcript ? m.transcript.trimEnd() + '\n' : '') + text;
+  if (!m.title) m.title = f.name.replace(/\.[^.]+$/, '');
+  save(); renderMeeting();
+});
+function cleanCaptions(raw){
+  const out = []; let stamp = '';
+  raw.replace(/\r/g, '').split('\n').forEach(line => {
+    const l = line.trim();
+    if (!l || /^WEBVTT/.test(l) || /^NOTE\b/.test(l) || /^\d+$/.test(l)) return;
+    const t = l.match(/^(\d{1,2}:)?(\d{2}):(\d{2})[.,]\d{3}\s*-->/);
+    if (t){ const h = t[1] ? t[1].slice(0,-1).padStart(2,'0') : '00'; stamp = `[${h}:${t[2]}:${t[3]}] `; return; }
+    const txt = l.replace(/<v\s+([^>]+)>/g, '$1: ').replace(/<\/?[^>]+>/g, '').trim();
+    if (!txt) return;
+    const prev = out[out.length - 1];
+    const sp = txt.match(/^([^:]{1,40}):\s/); const prevSp = prev && prev.text.match(/^([^:]{1,40}):\s/);
+    if (prev && sp && prevSp && sp[1] === prevSp[1] && !stamp){ prev.text += ' ' + txt.slice(sp[0].length); return; }
+    out.push({ stamp, text: txt }); stamp = '';
+  });
+  return out.map(o => o.stamp + o.text).join('\n');
+}
+
+/* ───────── live listening ───────── */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, elapsed = 0, runStart = 0, tick = null, wake = null;
+const fmt = s => [Math.floor(s/3600), Math.floor(s/60) % 60, Math.floor(s) % 60].map(v => String(v).padStart(2,'0')).join(':');
+const now = () => elapsed + (listening ? (Date.now() - runStart) / 1000 : 0);
+function showClock(){ $('#clock').textContent = fmt(now()); $('#clock').classList.toggle('on', listening); }
+function notice(msg){ const n = $('#notice'); n.hidden = !msg; n.textContent = msg || ''; }
+const deniedMsg = location.protocol === 'file:'
+  ? 'The microphone is blocked for files opened from your computer. Host this page on an https site (see the README) and open it from there.'
+  : 'Microphone permission was denied. Allow it from the icon in the address bar, then press Listen again.';
+
+function appendLine(text){
+  if (!text) return;
+  const ta = $('#transcript'); const atEnd = ta.scrollTop + ta.clientHeight >= ta.scrollHeight - 30;
+  const m = cur(); m.transcript = (m.transcript ? m.transcript.trimEnd() + '\n' : '') + `[${fmt(now())}] ${text.charAt(0).toUpperCase() + text.slice(1)}`;
+  m.elapsed = now();
+  ta.value = m.transcript; if (atEnd) ta.scrollTop = ta.scrollHeight; save(); wordCount();
+}
+function startListening(){
+  if (!SR){ notice('This browser has no built-in speech recognition. Use Chrome or Edge on a computer, or upload a transcript instead.'); return; }
+  notice('');
+  rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = cur().lang || 'en-US';
+  rec.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++){
+      const r = e.results[i];
+      if (r.isFinal) appendLine(r[0].transcript.trim()); else interim += r[0].transcript;
+    }
+    $('#interim').textContent = interim;
+  };
+  rec.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){ stopListening(); notice(deniedMsg); }
+    else if (e.error === 'audio-capture'){ stopListening(); notice('No microphone was found. Plug one in or check your sound settings, then press Listen again.'); }
+    else if (e.error === 'network'){ notice('Speech recognition lost its connection. It keeps retrying while Listen is on.'); }
+  };
+  rec.onend = () => { if (listening){ try { rec.start(); } catch {} } };
+  try { rec.start(); } catch { notice(deniedMsg); return; }
+  listening = true; runStart = Date.now();
+  tick = setInterval(showClock, 500); showClock(); setBtn();
+  if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => wake = w).catch(() => {});
+}
+function stopListening(){
+  if (listening){ elapsed += (Date.now() - runStart) / 1000; cur().elapsed = elapsed; save(); }
+  listening = false; clearInterval(tick); $('#interim').textContent = '';
+  try { rec && rec.stop(); } catch {} rec = null;
+  try { wake && wake.release(); } catch {} wake = null;
+  showClock(); setBtn();
+}
+function setBtn(){
+  const b = $('#listenBtn');
+  b.className = 'btn ' + (listening ? 'rec' : 'primary');
+  b.innerHTML = listening ? '<span class="sq"></span>Stop' : '<span class="dot"></span>' + (elapsed ? 'Resume' : 'Listen');
+  $('#brand').classList.toggle('live', listening);
+}
+$('#listenBtn').addEventListener('click', () => listening ? stopListening() : startListening());
+
+/* ───────── transcript → minutes (plain rules, no AI) ───────── */
+function showErr(msg){
+  const box = $('#notes'); box.querySelector('.err')?.remove();
+  const p = el('p','err', msg); p.style.padding = '14px 22px 0'; box.prepend(p);
+}
+const arr = v => Array.isArray(v) ? v : [];
+const uniq = (list, key = x => x.toLowerCase().replace(/\W+/g,' ').trim()) => { const seen = new Set(); return list.filter(x => { const k = key(x); if (!k || seen.has(k)) return false; seen.add(k); return true; }); };
+function cap(s){ s = String(s).trim().replace(/\s+/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function buildMinutes(m){
+  const STOP = new Set('the a an and or but if then so to of in on at for with from by as is are was were be been it its this that these those we you i he she they them our your my me us just like okay ok yeah yes no not do does did can could would should will shall have has had get got going go about there here what when where who how why which also really very more some any all one two three let lets i\'ll we\'ll you\'ll don\'t it\'s that\'s i\'d we\'re'.split(' '));
+  const DAY = /\b(today|tonight|tomorrow|this week|next week|end of (?:the )?(?:day|week|month)|eod|eow|(?:by |on |before )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}(?:st|nd|rd|th)?|the \d{1,2}(?:st|nd|rd|th))\b/i;
+  const rows = m.transcript.split('\n').map(l => l.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '').trim()).filter(Boolean).map(l => {
+    const sp = l.match(/^([A-Z][\w .'-]{0,30}):\s+(.*)$/); return sp ? { who: sp[1].trim(), text: sp[2] } : { who: '', text: l };
+  });
+  const attendees = uniq(rows.map(r => r.who).filter(Boolean));
+  const sentences = rows.flatMap(r => r.text.replace(/\b([ap])\.m\./gi, '$1m').split(/(?<=[.!?])\s+/).map(t => ({ who: r.who, text: t.trim() }))).filter(s => s.text.length > 3);
+  const actions = [], decisions = [], questions = [];
+  sentences.forEach(({ who, text }, i) => {
+    const due = (text.match(DAY) || [''])[0].replace(/^(by|on|before)\s+/i, '');
+    let m1;
+    if ((m1 = text.match(/^(?:([A-Z][a-z]+),\s*)?(?:can|could|would) you (?:please )?(.+?)[?.]?$/i))){
+      const owner = m1[1] || (sentences[i + 1]?.who && sentences[i + 1].who !== who ? sentences[i + 1].who : '');
+      actions.push({ task: cap(m1[2]), owner, due, done:false });
+    } else if ((m1 = text.match(/\b(?:I'll|I will|I'm going to|I can)\s+(.+?)[.!]?$/i)) && !/\?$/.test(text)){
+      actions.push({ task: cap(m1[1]), owner: who, due, done:false });
+    } else if ((m1 = text.match(/\b(?:action item|follow up|to-?do)[:\s-]+(.+)$/i))){
+      actions.push({ task: cap(m1[1]), owner: who, due, done:false });
+    }
+    const words = text.split(/\s+/).length;
+    const meta = /\blet's (start|begin|get started|move on|wrap up|go around)\b/i.test(text);
+    if (words >= 5 && !meta && /\b(agreed|we decided|decision is|let's go with|we'll go with|let's agree|we're going with|let's)\b/i.test(text) && !/\?$/.test(text)) decisions.push(cap(text));
+    if (/\b(open question|not sure yet|don't know yet|tbd|to be decided|need to check|come back next)\b/i.test(text)) questions.push(cap(text));
+  });
+  // discussion: recurring word pairs, each with the sentences that mention them
+  const counts = new Map();
+  sentences.forEach(({ text }) => {
+    const w = text.toLowerCase().replace(/[^a-z0-9\s'-]/g, ' ').split(/\s+/).filter(x => x.length > 2 && !STOP.has(x));
+    const seen = new Set();
+    for (let k = 0; k < w.length - 1; k++){ const bg = w[k] + ' ' + w[k + 1]; if (!seen.has(bg)){ seen.add(bg); counts.set(bg, (counts.get(bg) || 0) + 1); } }
+  });
+  const picked = [];
+  [...counts.entries()].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).forEach(([bg]) => {
+    if (picked.length < 6 && !picked.some(p => p.split(' ').some(x => bg.includes(x)))) picked.push(bg);
+  });
+  const topics = picked.map(bg => ({ title: bg.replace(/\b\w/g, c => c.toUpperCase()), points: uniq(sentences.filter(s => s.text.toLowerCase().includes(bg)).map(s => (s.who ? s.who + ': ' : '') + cap(s.text)), x => x.toLowerCase()).slice(0, 4) }));
+  return { summary:'', attendees, topics, decisions: uniq(decisions), actions: uniq(actions, a => a.task.toLowerCase()), questions: uniq(questions) };
+}
+
+let rebuildArm = null;
+$('#genBtn').addEventListener('click', e => {
+  const m = cur(); const b = e.currentTarget;
+  if (m.notes && !rebuildArm){ b.textContent = 'Replace edited minutes?'; rebuildArm = setTimeout(() => { b.textContent = 'Create minutes'; rebuildArm = null; }, 3000); return; }
+  clearTimeout(rebuildArm); rebuildArm = null; b.textContent = 'Create minutes';
+  if (!m.transcript.trim()){ showErr('The transcript is empty. Listen, paste or upload one first.'); return; }
+  if (listening) stopListening();
+  const keep = m.notes?.summary || '';
+  m.notes = buildMinutes(m); m.notes.summary = keep;
+  save(); renderNotes();
+});
+
+/* ───────── export ───────── */
+function toMarkdown(m){
+  const n = m.notes; if (!n) return '';
+  const L = [`# Minutes: ${m.title || 'Untitled meeting'}`, ''];
+  L.push(`**Date:** ${m.date || '—'}  `);
+  if (m.elapsed) L.push(`**Duration:** ${fmt(m.elapsed)}  `);
+  if (n.attendees?.length) L.push(`**Attendees:** ${n.attendees.join(', ')}`);
+  L.push('');
+  if (n.summary) L.push('## Notes', n.summary, '');
+  if (n.topics?.length){ L.push('## Discussion'); n.topics.forEach(t => { L.push(`### ${t.title}`); t.points.forEach(p => L.push(`- ${p}`)); L.push(''); }); }
+  if (n.actions?.length){ L.push('## Action items', '', '| Done | Action | Owner | Due |', '|---|---|---|---|'); n.actions.forEach(a => L.push(`| ${a.done ? '✓' : ' '} | ${a.task} | ${a.owner || '—'} | ${a.due || '—'} |`)); L.push(''); }
+  if (n.decisions?.length){ L.push('## Decisions'); n.decisions.forEach(d => L.push(`- ${d}`)); L.push(''); }
+  if (n.questions?.length){ L.push('## Open items'); n.questions.forEach(q => L.push(`- ${q}`)); L.push(''); }
+  return L.join('\n');
+}
+function flash(btn, text){ const o = btn.textContent; btn.textContent = text; setTimeout(() => btn.textContent = o, 1600); }
+$('#copyBtn').addEventListener('click', e => {
+  const md = toMarkdown(cur()); const b = e.currentTarget;
+  if (!md){ showErr('Create the minutes first, then copy them.'); return; }
+  const fallback = () => { const t = document.createElement('textarea'); t.value = md; document.body.append(t); t.select(); try { document.execCommand('copy'); flash(b, 'Copied'); } catch { flash(b, 'Copy failed'); } t.remove(); };
+  try { navigator.clipboard.writeText(md).then(() => flash(b, 'Copied'), fallback); } catch { fallback(); }
+});
+$('#exportBtn').addEventListener('click', e => {
+  const m = cur(); const md = toMarkdown(m);
+  if (!md){ showErr('Create the minutes first, then export them.'); return; }
+  const name = ((m.date ? m.date + ' ' : '') + (m.title || 'meeting notes')).replace(/[\\/:*?"<>|]+/g, '').trim() + '.md';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type:'text/markdown' })); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000); flash(e.currentTarget, 'Exported');
+});
+
+boot();
+})();
+</script>
+</body>
+</html>
