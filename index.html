@@ -570,36 +570,84 @@ function appendLine(text){
   m.elapsed = now();
   ta.value = m.transcript; if (atEnd) ta.scrollTop = ta.scrollHeight; save(); wordCount();
 }
-function startListening(){
-  if (!SR){ notice('This browser has no built-in speech recognition. Use Chrome or Edge on a computer, or upload a transcript instead.'); return; }
-  notice('');
-  rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = cur().lang || 'en-US';
-  rec.onresult = e => {
-    let interim = '';
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let pending = {}, committed = new Set(), lastResult = 0, lastHeard = 0, watch = null, autosave = null, restartT = null, iosWarned = false;
+function showInterim(){ $('#interim').textContent = Object.values(pending).join(' '); }
+// Safari often never marks results final in continuous mode, so lines that stop changing are committed after a short pause.
+function commitPending(){
+  Object.keys(pending).sort((a,b) => a - b).forEach(k => { const t = pending[k].trim(); committed.add(+k); if (t) appendLine(t); });
+  pending = {}; showInterim();
+}
+function makeRec(){
+  const r = new SR(); r.continuous = true; r.interimResults = true; r.lang = cur().lang || 'en-US';
+  pending = {}; committed = new Set();
+  r.onaudiostart = r.onspeechstart = () => { lastHeard = Date.now(); };
+  r.onresult = e => {
+    if (r !== rec) return;
+    lastResult = lastHeard = Date.now();
     for (let i = e.resultIndex; i < e.results.length; i++){
-      const r = e.results[i];
-      if (r.isFinal) appendLine(r[0].transcript.trim()); else interim += r[0].transcript;
+      const res = e.results[i], t = res[0].transcript;
+      if (committed.has(i)) continue;
+      if (res.isFinal){ delete pending[i]; committed.add(i); appendLine(t.trim()); }
+      else pending[i] = t;
     }
-    $('#interim').textContent = interim;
+    showInterim();
+    if (!$('#notice').hidden && /hearing|paused|connection/i.test($('#notice').textContent)) notice('');
   };
-  rec.onerror = e => {
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){ stopListening(); notice(deniedMsg); }
+  r.onerror = e => {
+    if (r !== rec) return;
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){ stopListening(); notice(isIOS ? 'iPhone stopped the microphone. Tap Resume to continue. (A web page can\'t use the mic while a phone, FaceTime, Teams or Zoom call is running on the same iPhone.)' : deniedMsg); }
     else if (e.error === 'audio-capture'){ stopListening(); notice('No microphone was found. Plug one in or check your sound settings, then press Listen again.'); }
     else if (e.error === 'network'){ notice('Speech recognition lost its connection. It keeps retrying while Listen is on.'); }
   };
-  rec.onend = () => { if (listening){ try { rec.start(); } catch {} } };
-  try { rec.start(); } catch { notice(deniedMsg); return; }
-  listening = true; runStart = Date.now();
+  r.onend = () => {
+    if (r !== rec) return;
+    commitPending();
+    if (!listening) return;
+    clearTimeout(restartT);
+    restartT = setTimeout(() => {               // the browser ends sessions on its own; start a fresh one
+      if (!listening || r !== rec) return;
+      try { rec = makeRec(); rec.start(); }
+      catch { stopListening(); notice('Listening paused — press Resume to continue.'); }
+    }, 250);
+  };
+  return r;
+}
+function startListening(){
+  if (!SR){ notice('This browser has no built-in speech recognition. Use Chrome or Edge on a computer, or upload a transcript instead.'); return; }
+  notice('');
+  if (rec){ try { rec.onend = null; rec.abort(); } catch {} rec = null; }
+  rec = makeRec();
+  try { rec.start(); } catch { rec = null; notice(deniedMsg); return; }
+  listening = true; runStart = Date.now(); lastResult = lastHeard = Date.now();
   tick = setInterval(showClock, 500); showClock(); setBtn();
+  watch = setInterval(() => {
+    if (!listening) return;
+    if (Object.keys(pending).length && Date.now() - lastResult > 2500) commitPending();
+    if (Date.now() - lastHeard > 45000 && $('#notice').hidden) notice('Not hearing anything yet. Check the mic is picking up the room — the transcript only hears what reaches this device\'s microphone.');
+  }, 1000);
+  autosave = setInterval(() => { if (listening){ cur().elapsed = now(); save(); } }, 30000);
   if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => wake = w).catch(() => {});
+  if (isIOS && !iosWarned){ iosWarned = true; notice('On iPhone: keep Safari open with the screen on. If the phone locks or you switch apps, listening pauses — come back and it resumes.'); }
 }
 function stopListening(){
+  const r = rec; rec = null;
+  if (r){ r.onend = null; try { r.stop(); } catch {} setTimeout(() => { try { r.abort(); } catch {} }, 1500); }
+  commitPending();
   if (listening){ elapsed += (Date.now() - runStart) / 1000; cur().elapsed = elapsed; save(); }
-  listening = false; clearInterval(tick); $('#interim').textContent = '';
-  try { rec && rec.stop(); } catch {} rec = null;
+  listening = false; clearInterval(tick); clearInterval(watch); clearInterval(autosave); clearTimeout(restartT);
   try { wake && wake.release(); } catch {} wake = null;
   showClock(); setBtn();
 }
+document.addEventListener('visibilitychange', () => {
+  if (!listening) return;
+  if (document.hidden){ commitPending(); cur().elapsed = now(); save(); flush(); }
+  else {
+    if (navigator.wakeLock) navigator.wakeLock.request('screen').then(w => wake = w).catch(() => {});
+    if (rec) { try { rec.start(); } catch {} }   // no-op if still running; revives a session the OS ended
+  }
+});
+window.addEventListener('pagehide', () => { if (listening){ commitPending(); cur().elapsed = now(); save(); flush(); } });
 function setBtn(){
   const b = $('#listenBtn');
   b.className = 'btn ' + (listening ? 'rec' : 'primary');
